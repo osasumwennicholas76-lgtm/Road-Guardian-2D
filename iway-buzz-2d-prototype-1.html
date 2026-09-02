@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>iWay Buzz — Road Guardians (2D Prototype)</title>
+<style>
+  :root{
+    --green:#1F7A3D;
+    --green-dark:#155229;
+    --gold:#E8A93B;
+    --road:#4A4E57;
+    --road-dark:#3A3D45;
+    --line:#F2C744;
+    --sidewalk:#C9BFA8;
+    --sky-day:#BFE3F0;
+    --sky-night:#0E1626;
+    --ink:#1B1D22;
+    --paper:#F4F1EA;
+    --danger:#D9483D;
+    --warn:#E8A93B;
+    --info:#3B7FE8;
+    --ok:#1F7A3D;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;}
+  html,body{height:100%;margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--ink);overflow:hidden;}
+  #app{position:relative;width:100%;height:100vh;max-height:100vh;overflow:hidden;background:var(--ink);}
+
+  #hud{
+    position:absolute;top:0;left:0;right:0;z-index:30;
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 12px;background:linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0));
+    color:#fff;font-size:13px;font-weight:600;
+  }
+  .hud-stat{display:flex;align-items:center;gap:5px;background:rgba(0,0,0,0.35);padding:5px 9px;border-radius:8px;}
+  .hud-stat .dot{width:8px;height:8px;border-radius:50%;}
+  #healthWrap{display:flex;align-items:center;gap:5px;background:rgba(0,0,0,0.35);padding:5px 9px;border-radius:8px;}
+  #healthBar{width:44px;height:6px;background:rgba(255,255,255,0.2);border-radius:4px;overflow:hidden;}
+  #healthFill{height:100%;width:100%;background:var(--danger);transition:width 0.25s ease, background 0.25s ease;}
+  #flash{position:absolute;inset:0;background:rgba(217,72,61,0.5);opacity:0;pointer-events:none;z-index:45;transition:opacity 0.15s ease;}
+  #flash.on{opacity:1;}
+  #stageLabel{font-size:11px;font-weight:700;letter-spacing:0.3px;color:var(--gold);}
+  #topRight{display:flex;gap:6px;align-items:center;}
+  #muteBtn,#pauseBtn{background:rgba(0,0,0,0.35);border:none;color:#fff;width:30px;height:30px;border-radius:8px;font-size:14px;}
+
+  #world{position:absolute;inset:0;overflow:hidden;transition:background 0.6s ease;}
+  #world.day{background:linear-gradient(var(--sky-day), #E7D9A8 55%, var(--road) 55%);}
+  #world.night{background:linear-gradient(var(--sky-night), #1B2438 55%, var(--road-dark) 55%);}
+
+  #track{
+    position:absolute;left:50%;bottom:0;width:280px;transform:translateX(-50%);
+    height:2600px;
+  }
+  .lane{position:absolute;left:0;top:0;width:100%;height:100%;background:repeating-linear-gradient(var(--road), var(--road) 100%);}
+  #world.night .lane{background:repeating-linear-gradient(var(--road-dark), var(--road-dark) 100%);}
+  .dash{position:absolute;left:50%;width:6px;height:36px;background:var(--line);transform:translateX(-50%);border-radius:3px;opacity:0.85;}
+  .sidewalk{position:absolute;top:0;bottom:0;width:34px;background:var(--sidewalk);}
+  #world.night .sidewalk{background:#2A2E38;}
+  .sidewalk.left{left:-34px;}
+  .sidewalk.right{right:-34px;}
+  .building{position:absolute;width:70px;height:90px;border-radius:4px;box-shadow:inset 0 0 0 2px rgba(0,0,0,0.15);}
+  .building .win{position:absolute;width:8px;height:10px;background:rgba(255,230,150,0.85);border-radius:1px;}
+
+  .obj{position:absolute;transform:translate(-50%,-50%);}
+  .hazard{cursor:pointer;filter:drop-shadow(0 3px 4px rgba(0,0,0,0.35));}
+  .hazard.near svg{transform:scale(1.15);}
+  .hazard svg{transition:transform 0.15s ease;}
+  .npc-car{position:absolute;transform:translate(-50%,-50%);filter:drop-shadow(0 3px 4px rgba(0,0,0,0.35));}
+  .npc-car .speedlines{opacity:0;}
+  .npc-car.fast .speedlines{opacity:0.6;}
+
+  #player{position:absolute;left:50%;z-index:20;transform:translate(-50%,-50%);filter:drop-shadow(0 4px 5px rgba(0,0,0,0.4));transition:left 0.12s ease;}
+
+  #rain{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity 0.6s ease;z-index:15;}
+  #rain.on{opacity:1;}
+  .drop{position:absolute;width:2px;height:14px;background:rgba(190,220,255,0.55);animation:fall linear infinite;}
+  @keyframes fall{from{transform:translateY(-20px);}to{transform:translateY(700px);}}
+
+  #toast{position:absolute;left:50%;top:70px;transform:translateX(-50%) translateY(-10px);background:var(--green);color:#fff;padding:9px 16px;border-radius:20px;font-weight:700;font-size:13px;opacity:0;transition:all 0.25s ease;z-index:40;box-shadow:0 4px 10px rgba(0,0,0,0.3);white-space:nowrap;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  #boardPrompt{
+    position:absolute;left:50%;bottom:150px;transform:translate(-50%,10px);z-index:35;
+    background:var(--gold);color:#1B1D22;padding:12px 20px;border-radius:14px;font-weight:800;font-size:13px;
+    opacity:0;pointer-events:none;transition:all 0.25s ease;box-shadow:0 4px 12px rgba(0,0,0,0.35);
+  }
+  #boardPrompt.show{opacity:1;transform:translate(-50%,0);pointer-events:auto;}
+  #boardPrompt.exit{background:var(--info);color:#fff;}
+
+  #impactSeq{position:absolute;inset:0;background:rgba(10,12,16,0.96);z-index:65;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;padding:24px;}
+  #impactSeq.hidden{display:none;}
+  #impactSeq .line{font-size:13px;font-weight:700;color:#6b7280;opacity:0;transform:translateY(8px);transition:all 0.35s ease;margin:5px 0;}
+  #impactSeq .line.on{opacity:1;transform:translateY(0);color:#fff;}
+  #impactSeq .line.on.final{color:var(--gold);}
+  #impactSeq .arrow{color:#4a4e57;font-size:12px;opacity:0;transition:opacity 0.3s ease;}
+  #impactSeq .arrow.on{opacity:1;}
+
+  #controls{position:absolute;bottom:0;left:0;right:0;z-index:30;display:flex;justify-content:space-between;align-items:flex-end;padding:16px;pointer-events:none;}
+  #dpad{position:relative;width:120px;height:120px;pointer-events:auto;}
+  .dbtn{position:absolute;width:40px;height:40px;background:rgba(20,22,28,0.75);border:1px solid rgba(255,255,255,0.15);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;}
+  .dbtn:active{background:var(--green);}
+  #dUp{top:0;left:40px;} #dDown{bottom:0;left:40px;} #dLeft{top:40px;left:0;} #dRight{top:40px;right:0;}
+
+  #reportWrap{pointer-events:auto;display:flex;flex-direction:column;align-items:center;gap:8px;}
+  #reportBtn{width:76px;height:76px;border-radius:50%;background:var(--danger);border:3px solid rgba(255,255,255,0.5);color:#fff;font-weight:800;font-size:12px;letter-spacing:0.5px;box-shadow:0 4px 12px rgba(0,0,0,0.4);}
+  #reportBtn:disabled{background:#6b6f78;opacity:0.6;}
+  #reportBtn.ready{animation:pulse 1s ease infinite;}
+  @keyframes pulse{0%,100%{box-shadow:0 4px 12px rgba(0,0,0,0.4);}50%{box-shadow:0 4px 22px rgba(217,72,61,0.7);}}
+  #hint{color:#fff;font-size:11px;font-weight:600;background:rgba(0,0,0,0.4);padding:4px 10px;border-radius:10px;}
+
+  #catSheet{position:absolute;left:0;right:0;bottom:0;z-index:50;background:var(--paper);border-radius:18px 18px 0 0;padding:18px 16px 22px;transform:translateY(100%);transition:transform 0.25s ease;box-shadow:0 -6px 20px rgba(0,0,0,0.3);}
+  #catSheet.open{transform:translateY(0);}
+  #catSheet h3{margin:0 0 12px;font-size:15px;color:var(--ink);}
+  .catGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .catBtn{display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;border:none;font-weight:700;font-size:13px;color:#fff;}
+  .catBtn.pothole{background:var(--warn);} .catBtn.accident{background:var(--danger);}
+  .catBtn.traffic{background:var(--info);} .catBtn.roadblock{background:var(--green);}
+
+  .overlay{position:absolute;inset:0;background:rgba(10,12,16,0.92);z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;padding:24px;}
+  .overlay.hidden{display:none;}
+  .overlay h1{font-size:26px;margin:0 0 6px;color:var(--gold);}
+  .overlay p{font-size:13px;color:#cfd3da;max-width:280px;line-height:1.5;margin:0 0 22px;}
+  .bigBtn{background:var(--green);color:#fff;border:none;padding:14px 30px;border-radius:12px;font-weight:800;font-size:14px;letter-spacing:0.3px;}
+  .badge{width:56px;height:56px;border-radius:14px;background:var(--green);display:flex;align-items:center;justify-content:center;margin-bottom:14px;font-size:26px;}
+  #soundNote{font-size:11px;color:#8b8f99;margin-top:-12px;margin-bottom:18px;}
+
+  #stageSelect{display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px;margin-top:4px;}
+  .stageCard{
+    display:flex;align-items:center;gap:12px;background:#20242c;border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px;padding:12px 14px;text-align:left;color:#fff;
+  }
+  .stageCard .swatch{width:44px;height:44px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;}
+  .stageCard .meta{flex:1;}
+  .stageCard .meta .n{font-weight:800;font-size:13px;}
+  .stageCard .meta .d{font-size:11px;color:#a7abb5;margin-top:2px;}
+  .stageCard .go{color:var(--gold);font-size:16px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="world" class="day">
+    <div id="track">
+      <div class="lane" id="laneBg"></div>
+    </div>
+    <div id="rain"></div>
+  </div>
+
+  <div id="hud">
+    <div style="display:flex;gap:8px;">
+      <div class="hud-stat"><span class="dot" style="background:var(--gold);"></span><span id="impactVal">0</span></div>
+      <div class="hud-stat"><span class="dot" style="background:var(--ok);"></span><span id="trustVal">80%</span></div>
+      <div id="healthWrap"><span style="font-size:11px;">❤️</span><div id="healthBar"><div id="healthFill"></div></div></div>
+    </div>
+    <div id="stageLabel">LAGOS STREETS</div>
+    <div id="topRight">
+      <button id="muteBtn">🔊</button>
+      <button id="pauseBtn">II</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="boardPrompt">TAP TO BOARD DANFO</div>
+
+  <div id="controls">
+    <div id="dpad">
+      <button class="dbtn" id="dUp">▲</button>
+      <button class="dbtn" id="dLeft">◀</button>
+      <button class="dbtn" id="dRight">▶</button>
+      <button class="dbtn" id="dDown">▼</button>
+    </div>
+    <div id="reportWrap">
+      <div id="hint">Move toward a hazard</div>
+      <button id="reportBtn" disabled>REPORT</button>
+    </div>
+  </div>
+
+  <div id="catSheet">
+    <h3>What did you see?</h3>
+    <div class="catGrid">
+      <button class="catBtn pothole" data-cat="pothole">🕳️ Pothole</button>
+      <button class="catBtn accident" data-cat="accident">🚧 Accident</button>
+      <button class="catBtn traffic" data-cat="traffic">🚗 Traffic</button>
+      <button class="catBtn roadblock" data-cat="roadblock">⛔ Roadblock</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="startOverlay">
+    <div class="badge">📍</div>
+    <h1>iWay Buzz</h1>
+    <p>2D flat-vector prototype. Walk the street, spot hazards, and report them. Partway through, a danfo will pass — board it to finish the journey on wheels.</p>
+    <div id="soundNote">🔊 "Ẹ máa lọ, ẹ máa dé" (go safely, return safely) plays on start</div>
+    <button class="bigBtn" id="startBtn">CHOOSE STAGE</button>
+  </div>
+
+  <div class="overlay hidden" id="stageSelectOverlay">
+    <h1 style="font-size:20px;">Pick Your Stage</h1>
+    <p style="margin-bottom:14px;">Any environment is playable — jump into whichever one you like.</p>
+    <div id="stageSelect">
+      <button class="stageCard" data-stage="lagos-streets">
+        <div class="swatch" style="background:#BFE3F0;">☀️</div>
+        <div class="meta"><div class="n">Lagos Streets</div><div class="d">Daytime · market road · steady traffic</div></div>
+        <div class="go">▶</div>
+      </button>
+      <button class="stageCard" data-stage="ikeja-night">
+        <div class="swatch" style="background:#1B2438;">🌙</div>
+        <div class="meta"><div class="n">Ikeja Night</div><div class="d">Night driving · low visibility</div></div>
+        <div class="go">▶</div>
+      </button>
+      <button class="stageCard" data-stage="flooded-lagos">
+        <div class="swatch" style="background:#2c3e50;">🌧️</div>
+        <div class="meta"><div class="n">Flooded Lagos</div><div class="d">Heavy rain · flooded road hazards</div></div>
+        <div class="go">▶</div>
+      </button>
+      <button class="stageCard" data-stage="mainland">
+        <div class="swatch" style="background:#E7D9A8;">🚕</div>
+        <div class="meta"><div class="n">Lagos Mainland</div><div class="d">Daytime · heavier traffic density</div></div>
+        <div class="go">▶</div>
+      </button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="endOverlay">
+    <div class="badge" style="background:var(--gold);">⭐</div>
+    <h1>Stage Clear</h1>
+    <p id="endSummary"></p>
+    <button class="bigBtn" id="restartBtn">PLAY AGAIN</button>
+  </div>
+
+  <div id="impactSeq" class="hidden">
+    <div class="line" id="seqL1">HAZARD IDENTIFIED</div>
+    <div class="arrow" id="seqA1">↓</div>
+    <div class="line" id="seqL2">REPORT SUBMITTED</div>
+    <div class="arrow" id="seqA2">↓</div>
+    <div class="line" id="seqL3">SAFETY INFORMATION RECEIVED</div>
+    <div class="arrow" id="seqA3">↓</div>
+    <div class="line" id="seqL4">ROAD SAFETY AUTHORITIES ALERTED</div>
+    <div class="arrow" id="seqA4">↓</div>
+    <div class="line final" id="seqL5">TRAVELLERS BECOME SAFER</div>
+  </div>
+
+  <div id="flash"></div>
+
+</div>
+
+<script>
+(function(){
+  const track = document.getElementById('track');
+  const app = document.getElementById('app');
+  const worldEl = document.getElementById('world');
+
+  // ---------- AUDIO ----------
+  let audioCtx = null;
+  let muted = false;
+  function ensureAudio(){
+    if(!audioCtx){
+      try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ audioCtx = null; }
+    }
+    if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function beep(freq, dur, type, vol){
+    if(muted || !audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    gain.gain.value = (vol!=null?vol:0.12);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    const now = audioCtx.currentTime;
+    gain.gain.setValueAtTime(gain.gain.value, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    osc.start(now);
+    osc.stop(now + dur);
+  }
+  function sfxStep(){ beep(180 + Math.random()*30, 0.06, 'square', 0.04); }
+  function sfxGood(){ beep(523,0.12,'sine',0.14); setTimeout(()=>beep(784,0.16,'sine',0.14),110); }
+  function sfxBad(){ beep(160,0.25,'sawtooth',0.12); }
+  function sfxHonk(){ beep(300,0.18,'sawtooth',0.09); setTimeout(()=>beep(300,0.12,'sawtooth',0.07),160); }
+  function sfxBoard(){ beep(440,0.1,'triangle',0.12); setTimeout(()=>beep(660,0.14,'triangle',0.12),100); setTimeout(()=>beep(880,0.18,'triangle',0.12),210); }
+  function sfxWhoosh(){ beep(900,0.08,'sine',0.05); }
+  function sfxCrash(){ beep(90,0.3,'sawtooth',0.16); setTimeout(()=>beep(70,0.25,'square',0.12),80); }
+  function hapticStrong(){ if(navigator.vibrate) navigator.vibrate([120,60,120]); }
+  function hapticLight(){ if(navigator.vibrate) navigator.vibrate(30); }
+
+  function speak(text){
+    if(muted) return;
+    if(!('speechSynthesis' in window)) return;
+    try{
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.95; u.pitch = 1.0; u.volume = 1.0;
+      window.speechSynthesis.speak(u);
+    }catch(e){}
+  }
+
+  document.getElementById('muteBtn').addEventListener('click', ()=>{
+    muted = !muted;
+    document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
+    if(muted && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+  });
+
+  // ---------- PLAYER ----------
+  const playerEl = document.createElement('div');
+  playerEl.id = 'player';
+  function playerWalkingSvg(){
+    return `<svg width="34" height="46" viewBox="0 0 34 46">
+      <ellipse cx="17" cy="42" rx="10" ry="3" fill="rgba(0,0,0,0.25)"/>
+      <circle cx="17" cy="10" r="7" fill="#3B2A1F"/>
+      <rect x="9" y="16" width="16" height="18" rx="5" fill="#1F7A3D"/>
+      <rect x="9" y="16" width="16" height="6" rx="3" fill="#E8A93B"/>
+      <rect x="6" y="34" width="9" height="10" rx="3" fill="#2B3A55"/>
+      <rect x="19" y="34" width="9" height="10" rx="3" fill="#2B3A55"/>
+    </svg>`;
+  }
+  function playerBusSvg(){
+    return `<svg width="46" height="66" viewBox="0 0 46 66">
+      <ellipse cx="23" cy="62" rx="18" ry="4" fill="rgba(0,0,0,0.3)"/>
+      <rect x="4" y="6" width="38" height="48" rx="8" fill="#E8A93B"/>
+      <rect x="8" y="12" width="30" height="14" rx="3" fill="#8ecae6"/>
+      <rect x="8" y="30" width="30" height="4" fill="#1B1D22"/>
+      <circle cx="12" cy="56" r="6" fill="#222"/>
+      <circle cx="34" cy="56" r="6" fill="#222"/>
+      <text x="23" y="46" font-size="8" text-anchor="middle" fill="#1B1D22" font-weight="700">DANFO</text>
+    </svg>`;
+  }
+  playerEl.innerHTML = playerWalkingSvg();
+  playerEl.style.position = 'absolute';
+  worldEl.appendChild(playerEl);
+
+  // ---------- WORLD CONSTANTS ----------
+  const WORLD_LEN = 2600;
+  const ROAD_W = 280;
+  const LANE_MARGIN = 36;
+  let worldY = 120;
+  let laneX = 0;
+  let impact = 1250;
+  let trust = 80;
+  let stageComplete = false;
+  let playing = false;
+  let isNight = false;
+  let isRain = false;
+  let boarded = false;
+  let boardBusRef = null;
+  const BOARD_Y = 1350;
+  let health = 100;
+  let checkpointY = 120;
+  let invulnUntil = 0;
+
+  const STAGES = {
+    'lagos-streets': {label:'LAGOS STREETS', forceNight:false, forceRain:false, trafficMult:1},
+    'ikeja-night':   {label:'IKEJA NIGHT',   forceNight:true,  forceRain:false, trafficMult:1.1},
+    'flooded-lagos': {label:'FLOODED LAGOS', forceNight:false, forceRain:true,  trafficMult:0.9},
+    'mainland':      {label:'LAGOS MAINLAND',forceNight:false, forceRain:false, trafficMult:1.6}
+  };
+  let currentStage = STAGES['lagos-streets'];
+
+  const impactVal = document.getElementById('impactVal');
+  const trustVal = document.getElementById('trustVal');
+  const toast = document.getElementById('toast');
+  const reportBtn = document.getElementById('reportBtn');
+  const hint = document.getElementById('hint');
+  const catSheet = document.getElementById('catSheet');
+  const rainEl = document.getElementById('rain');
+  const boardPrompt = document.getElementById('boardPrompt');
+  const healthFill = document.getElementById('healthFill');
+  const flashEl = document.getElementById('flash');
+
+  function updateHud(){
+    impactVal.textContent = impact.toLocaleString();
+    trustVal.textContent = trust + '%';
+    healthFill.style.width = health + '%';
+    healthFill.style.background = health > 50 ? 'var(--ok)' : (health > 20 ? 'var(--warn)' : 'var(--danger)');
+  }
+
+  function takeDamage(amount){
+    const now = performance.now();
+    if(now < invulnUntil) return;
+    invulnUntil = now + 1200;
+    health = Math.max(0, health - amount);
+    sfxCrash();
+    hapticStrong();
+    flashEl.classList.add('on');
+    setTimeout(()=>flashEl.classList.remove('on'), 180);
+    showToast(boarded ? 'The danfo clipped something!' : 'You were nearly hit — take care!', 1800);
+    updateHud();
+    if(health <= 0){
+      showToast('Returning to last safe point…', 1800);
+      setTimeout(()=>{
+        worldY = checkpointY;
+        laneX = 0;
+        health = 60;
+        boarded = false;
+        playerEl.innerHTML = playerWalkingSvg();
+        invulnUntil = performance.now() + 1500;
+        updateHud();
+      }, 700);
+    }
+  }
+  function showToast(msg, ms){
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(()=>toast.classList.remove('show'), ms||1600);
+  }
+
+  // ---------- BUILD TRACK ----------
+  function buildTrack(){
+    track.style.height = WORLD_LEN + 'px';
+    for(let y=40; y<WORLD_LEN; y+=70){
+      const d = document.createElement('div');
+      d.className='dash';
+      d.style.bottom = y+'px';
+      track.appendChild(d);
+    }
+    const sl = document.createElement('div'); sl.className='sidewalk left';
+    const sr = document.createElement('div'); sr.className='sidewalk right';
+    track.appendChild(sl); track.appendChild(sr);
+    const palette = ['#B5654B','#7C8A6B','#C79A4B','#5E7A96','#A85C5C','#8A7148'];
+    for(let y=20; y<WORLD_LEN; y+=110){
+      [ -1, 1 ].forEach(side=>{
+        const b = document.createElement('div');
+        b.className='building';
+        b.style.bottom = y+'px';
+        b.style.background = palette[Math.floor(Math.random()*palette.length)];
+        if(side===-1){ b.style.left = -(34+70+Math.random()*14) + 'px'; }
+        else { b.style.left = (ROAD_W+34+Math.random()*14) + 'px'; }
+        for(let i=0;i<6;i++){
+          const w = document.createElement('div');
+          w.className='win';
+          w.style.left = (8+(i%2)*24)+'px';
+          w.style.top = (10+Math.floor(i/2)*24)+'px';
+          b.appendChild(w);
+        }
+        track.appendChild(b);
+      });
+    }
+  }
+
+  // ---------- HAZARDS ----------
+  const HAZARD_TYPES = {
+    pothole:{icon:'🕳️', color:'#E8A93B', label:'Pothole'},
+    accident:{icon:'🚧', color:'#D9483D', label:'Accident'},
+    traffic:{icon:'🚗', color:'#3B7FE8', label:'Traffic'},
+    roadblock:{icon:'⛔', color:'#1F7A3D', label:'Roadblock'}
+  };
+  let hazards = [];
+  function spawnHazards(){
+    hazards = [];
+    const types = Object.keys(HAZARD_TYPES);
+    for(let i=0;i<6;i++){
+      const y = 300 + i*380 + Math.random()*80;
+      const x = (Math.random()*2-1) * 0.75;
+      const type = types[Math.floor(Math.random()*types.length)];
+      const el = document.createElement('div');
+      el.className='obj hazard';
+      el.style.bottom = y+'px';
+      el.innerHTML = `<svg width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="13" fill="${HAZARD_TYPES[type].color}" stroke="#fff" stroke-width="2"/><text x="15" y="20" font-size="14" text-anchor="middle">${HAZARD_TYPES[type].icon}</text></svg>`;
+      track.appendChild(el);
+      positionAt(el, x, y);
+      hazards.push({el,type,y,x,done:false});
+    }
+  }
+
+  function positionAt(el, xRel, y){
+    const px = (xRel * (ROAD_W/2 - LANE_MARGIN));
+    el.style.left = (ROAD_W/2 + px) + 'px';
+  }
+
+  // ---------- MOVING NPC TRAFFIC ----------
+  // Cars drift toward the player (oncoming) at their own pace, independent of the player's motion,
+  // so the road always feels alive even while the player stands still.
+  let npcCars = [];
+  function makeCar(y, x, speed){
+    const el = document.createElement('div');
+    el.className='npc-car';
+    el.innerHTML = `<svg width="26" height="40" viewBox="0 0 26 40"><rect x="2" y="4" width="22" height="32" rx="6" fill="#333"/><rect x="4" y="8" width="18" height="10" rx="3" fill="#8ecae6"/></svg>`;
+    track.appendChild(el);
+    return {el, y, x, speed, honked:false};
+  }
+  function spawnNpcCars(){
+    npcCars.forEach(c=>c.el.remove());
+    npcCars = [];
+    const count = Math.round(5 * (currentStage.trafficMult || 1));
+    for(let i=0;i<count;i++){
+      const y = 500 + i*(420/(currentStage.trafficMult||1)) + Math.random()*100;
+      const x = (Math.random()>0.5? 0.6:-0.6);
+      const speed = (1.1 + Math.random()*0.9) * (currentStage.trafficMult||1);
+      npcCars.push(makeCar(y, x, speed));
+    }
+  }
+  function updateNpcCars(){
+    npcCars.forEach(c=>{
+      c.y -= c.speed; // slowly comes toward the player
+      if(c.y < worldY - 260){
+        // passed behind the player — respawn ahead
+        c.y = worldY + 500 + Math.random()*400;
+        c.x = (Math.random()>0.5? 0.6:-0.6);
+        c.speed = 1.1 + Math.random()*0.9;
+        c.honked = false;
+      }
+      c.el.style.bottom = c.y + 'px';
+      positionAt(c.el, c.x, c.y);
+      const dist = Math.abs(c.y - worldY);
+      if(dist < 60 && !c.honked && playing){
+        c.honked = true;
+        sfxHonk();
+      }
+      if(dist > 120) c.honked = false;
+      // collision: car is close in both distance and lane
+      const laneDist = Math.abs(c.x - laneX);
+      if(playing && dist < 26 && laneDist < 0.4){
+        takeDamage(boarded ? 12 : 22);
+      }
+    });
+  }
+
+  // ---------- BOARDABLE DANFO ----------
+  let boardBus = null;
+  function spawnBoardBus(){
+    const el = document.createElement('div');
+    el.className='npc-car';
+    el.style.zIndex = 18;
+    el.innerHTML = `<svg width="40" height="58" viewBox="0 0 40 58"><rect x="2" y="4" width="36" height="46" rx="7" fill="#E8A93B"/><rect x="6" y="10" width="28" height="12" rx="3" fill="#8ecae6"/><rect x="6" y="26" width="28" height="4" fill="#1B1D22"/><text x="20" y="42" font-size="8" text-anchor="middle" fill="#1B1D22" font-weight="700">DANFO</text></svg>`;
+    track.appendChild(el);
+    boardBus = {el, y: BOARD_Y, x: 0, speed: 0.35};
+    positionAt(el, 0, BOARD_Y);
+    el.style.bottom = BOARD_Y + 'px';
+  }
+  function updateBoardBus(){
+    if(!boardBus || boarded) return;
+    // drifts forward slowly, slightly slower than a walking player catches up to it
+    boardBus.y += boardBus.speed;
+    boardBus.el.style.bottom = boardBus.y + 'px';
+    positionAt(boardBus.el, boardBus.x, boardBus.y);
+    const dist = Math.abs(boardBus.y - worldY);
+    const laneDist = Math.abs(boardBus.x - laneX);
+    if(dist < 55 && laneDist < 0.6){
+      boardPrompt.classList.add('show');
+    } else {
+      boardPrompt.classList.remove('show');
+    }
+  }
+  let boardedAtY = 0;
+  let exitOffered = false;
+  function boardTheBus(){
+    if(boarded || !boardBus) return;
+    boarded = true;
+    boardedAtY = worldY;
+    exitOffered = false;
+    boardPrompt.classList.remove('show');
+    boardPrompt.classList.remove('exit');
+    boardBus.el.remove();
+    playerEl.innerHTML = playerBusSvg();
+    sfxBoard();
+    hapticLight();
+    speak('Entering danfo. You can keep reporting while riding.');
+    showToast('Riding the danfo — you can still report hazards', 2200);
+  }
+  function exitTheBus(){
+    if(!boarded) return;
+    boarded = false;
+    boardPrompt.classList.remove('show');
+    boardPrompt.classList.remove('exit');
+    boardPrompt.textContent = 'TAP TO BOARD DANFO';
+    playerEl.innerHTML = playerWalkingSvg();
+    sfxBoard();
+    hapticLight();
+    speak('Exiting danfo. Back on foot.');
+    showToast('Exited the danfo — back to walking', 1800);
+  }
+  boardPrompt.addEventListener('click', ()=>{
+    if(boarded) exitTheBus(); else boardTheBus();
+  });
+  function updateExitPrompt(){
+    if(!boarded) return;
+    const traveled = worldY - boardedAtY;
+    if(traveled > 260 && traveled < 900){
+      boardPrompt.textContent = 'TAP TO EXIT';
+      boardPrompt.classList.add('exit');
+      boardPrompt.classList.add('show');
+    } else if(traveled >= 900 && !exitOffered){
+      // gentle nudge to disembark before stage end
+      boardPrompt.textContent = 'TAP TO EXIT';
+      boardPrompt.classList.add('exit');
+      boardPrompt.classList.add('show');
+    } else if(traveled <= 260){
+      boardPrompt.classList.remove('show');
+    }
+  }
+
+  buildTrack();
+  spawnHazards();
+  spawnNpcCars();
+  spawnBoardBus();
+
+  // ---------- RENDER / LOOP ----------
+  let lastStepSfx = 0;
+  function render(){
+    const viewportH = app.clientHeight;
+    const camY = worldY - viewportH*0.32;
+    track.style.transform = `translate(-50%, ${camY}px)`;
+    const px = laneX * (ROAD_W/2 - LANE_MARGIN);
+    playerEl.style.left = `calc(50% + ${px}px)`;
+    playerEl.style.top = (viewportH*0.68) + 'px';
+
+    let nearest = null, nearestDist = 9999;
+    hazards.forEach(h=>{
+      if(h.done) return;
+      const dy = Math.abs(h.y - worldY);
+      const dx = Math.abs(h.x - laneX);
+      const dist = dy + dx*140;
+      h.el.classList.toggle('near', dist < 90);
+      if(dist < nearestDist){ nearestDist = dist; nearest = h; }
+    });
+    if(nearest && nearestDist < 90){
+      reportBtn.disabled = false;
+      reportBtn.classList.add('ready');
+      hint.textContent = 'Hazard nearby — tap REPORT';
+      reportBtn._target = nearest;
+    } else {
+      reportBtn.disabled = true;
+      reportBtn.classList.remove('ready');
+      hint.textContent = boarded ? 'Riding the danfo home' : 'Move toward a hazard';
+      reportBtn._target = null;
+    }
+
+    if(!stageComplete && worldY > WORLD_LEN - 200){
+      stageComplete = true;
+      playing = false;
+      setTimeout(playImpactSequence, 400);
+    }
+  }
+
+  function playImpactSequence(){
+    const seq = document.getElementById('impactSeq');
+    seq.classList.remove('hidden');
+    const steps = [
+      ['seqL1', null], ['seqA1','seqL2'], ['seqA2','seqL3'],
+      ['seqA3','seqL4'], ['seqA4','seqL5']
+    ];
+    let i = 0;
+    function playStep(){
+      if(i >= steps.length){
+        setTimeout(()=>{
+          seq.classList.add('hidden');
+          document.getElementById('endSummary').textContent =
+            `${impact.toLocaleString()} Impact · ${trust}% Trust · ${health}% Health remaining. Your reports helped bring attention to dangerous conditions on Lagos Streets.`;
+          document.getElementById('endOverlay').classList.remove('hidden');
+          speak('Journey complete. Well done, road guardian.');
+        }, 700);
+        return;
+      }
+      const [arrowId, lineId] = steps[i];
+      const arrowEl = document.getElementById(arrowId);
+      if(arrowEl) arrowEl.classList.add('on');
+      if(lineId){ document.getElementById(lineId).classList.add('on'); }
+      else { document.getElementById('seqL1').classList.add('on'); }
+      sfxWhoosh();
+      i++;
+      setTimeout(playStep, 550);
+    }
+    playStep();
+  }
+
+  function tick(){
+    if(playing){
+      updateNpcCars();
+      updateBoardBus();
+      updateExitPrompt();
+      // once boarded, the vehicle keeps the journey moving forward on its own
+      if(boarded){
+        worldY = Math.min(WORLD_LEN, worldY + 6);
+      }
+      if(health > 40){
+        checkpointY = Math.max(checkpointY, worldY - 150);
+      }
+    }
+    render();
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- MOVEMENT ----------
+  const speed = 14;
+  const laneSpeed = 0.12;
+  let moveInterval = null;
+  function step(dir){
+    if(!playing) return;
+    if(dir==='up' && !boarded) worldY = Math.min(WORLD_LEN, worldY + speed);
+    if(dir==='down' && !boarded) worldY = Math.max(0, worldY - speed);
+    if(dir==='left') laneX = Math.max(-1, laneX - laneSpeed);
+    if(dir==='right') laneX = Math.min(1, laneX + laneSpeed);
+    const now = performance.now();
+    if(now - lastStepSfx > 140){ sfxStep(); lastStepSfx = now; }
+    render();
+  }
+  function bindHold(id, dir){
+    const el = document.getElementById(id);
+    const start = (e)=>{ e.preventDefault(); ensureAudio(); step(dir); clearInterval(moveInterval); moveInterval = setInterval(()=>step(dir), 60); };
+    const end = ()=>{ clearInterval(moveInterval); };
+    el.addEventListener('touchstart', start, {passive:false});
+    el.addEventListener('mousedown', start);
+    el.addEventListener('touchend', end);
+    el.addEventListener('mouseup', end);
+    el.addEventListener('mouseleave', end);
+  }
+  bindHold('dUp','up'); bindHold('dDown','down'); bindHold('dLeft','left'); bindHold('dRight','right');
+
+  document.addEventListener('keydown', e=>{
+    if(['ArrowUp','w'].includes(e.key)) step('up');
+    if(['ArrowDown','s'].includes(e.key)) step('down');
+    if(['ArrowLeft','a'].includes(e.key)) step('left');
+    if(['ArrowRight','d'].includes(e.key)) step('right');
+  });
+
+  // ---------- REPORT FLOW ----------
+  reportBtn.addEventListener('click', ()=>{
+    ensureAudio();
+    if(!reportBtn._target) return;
+    catSheet.classList.add('open');
+  });
+
+  document.querySelectorAll('.catBtn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const cat = btn.dataset.cat;
+      const target = reportBtn._target;
+      catSheet.classList.remove('open');
+      if(!target) return;
+      const correct = cat === target.type;
+      if(correct){
+        impact += 50;
+        trust = Math.min(100, trust + 2);
+        sfxGood();
+        hapticLight();
+        showToast('GOOD REPORT! +50 Impact, Trust +2%');
+      } else {
+        trust = Math.max(0, trust - 3);
+        sfxBad();
+        showToast('Not quite — that was a ' + HAZARD_TYPES[target.type].label, 1800);
+      }
+      target.done = true;
+      target.el.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+      target.el.style.opacity = '0';
+      target.el.style.transform = 'translate(-50%,-50%) scale(0.3)';
+      updateHud();
+    });
+  });
+
+  // ---------- ENVIRONMENT ----------
+  function cycleEnvironment(){
+    const wantNight = currentStage.forceNight || (worldY > 1000 && worldY < 1900 && !currentStage.forceRain);
+    if(wantNight && !isNight){ isNight = true; worldEl.classList.remove('day'); worldEl.classList.add('night'); }
+    if(!wantNight && isNight){ isNight = false; worldEl.classList.add('day'); worldEl.classList.remove('night'); }
+
+    const shouldRain = currentStage.forceRain || (worldY > 1900 && !currentStage.forceNight);
+    if(shouldRain && !isRain){
+      isRain = true; rainEl.classList.add('on'); buildRain();
+    } else if(!shouldRain && isRain){
+      isRain = false; rainEl.classList.remove('on'); rainEl.innerHTML='';
+    }
+  }
+  function buildRain(){
+    rainEl.innerHTML='';
+    for(let i=0;i<40;i++){
+      const d = document.createElement('div');
+      d.className='drop';
+      d.style.left = Math.random()*100+'%';
+      d.style.animationDuration = (0.5+Math.random()*0.4)+'s';
+      d.style.animationDelay = (Math.random()*1)+'s';
+      rainEl.appendChild(d);
+    }
+  }
+  const envInterval = setInterval(()=>{ if(playing) cycleEnvironment(); }, 300);
+
+  // ---------- START / RESTART ----------
+  document.getElementById('startBtn').addEventListener('click', ()=>{
+    ensureAudio();
+    document.getElementById('startOverlay').classList.add('hidden');
+    document.getElementById('stageSelectOverlay').classList.remove('hidden');
+  });
+
+  function beginStage(stageKey){
+    currentStage = STAGES[stageKey] || STAGES['lagos-streets'];
+    document.getElementById('stageLabel').textContent = currentStage.label;
+    document.getElementById('stageSelectOverlay').classList.add('hidden');
+    spawnNpcCars();
+    playing = true;
+    showToast('Ẹ máa lọ, ẹ máa dé 🎵', 2400);
+    speak('Ẹ máa lọ, ẹ máa dé. Go safely, and return safely.');
+    cycleEnvironment();
+    render();
+    requestAnimationFrame(tick);
+  }
+  document.querySelectorAll('.stageCard').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      ensureAudio();
+      beginStage(card.dataset.stage);
+    });
+  });
+
+  document.getElementById('restartBtn').addEventListener('click', ()=>{ location.reload(); });
+  document.getElementById('pauseBtn').addEventListener('click', ()=>{
+    playing = !playing;
+    showToast(playing ? 'Resumed' : 'Paused', 900);
+  });
+
+  updateHud();
+  render();
+})();
+</script>
+</body>
+</html>
