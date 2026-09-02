@@ -647,14 +647,16 @@
     }
   }
 
-  // ---------- STREET VENDORS (decorative) ----------
+  // ---------- STREET VENDORS (decorative, some call out as you pass) ----------
   const VENDORS = [
-    {fruit:'🍌', trayColor:'#E8A93B'},
-    {fruit:'🍎', trayColor:'#D9483D'},
-    {fruit:'🍊', trayColor:'#E67E22'},
-    {fruit:'🥭', trayColor:'#C0392B'}
+    {fruit:'🍌', trayColor:'#E8A93B', calls:['Banana! Come buy banana!', 'Sweet banana, come and buy!']},
+    {fruit:'🍎', trayColor:'#D9483D', calls:['Apple! Fresh apple here!', 'Come buy apple, sweet one!']},
+    {fruit:'🍊', trayColor:'#E67E22', calls:['Orange! Sweet orange, come buy!', 'Fresh orange here, come and buy!']},
+    {fruit:'🥭', trayColor:'#C0392B', calls:['Mango! Sweet mango, come buy!', 'Come and buy mango!']}
   ];
+  let vendors = [];
   function spawnVendors(){
+    vendors = [];
     for(let y=90; y<WORLD_LEN; y+=190+Math.random()*120){
       if(y > BRIDGE_START-40 && y < BRIDGE_END+40) continue; // no vendors on the bridge
       const side = Math.random()>0.5 ? 1 : -1;
@@ -672,7 +674,29 @@
         <text x="13" y="28" font-size="9" text-anchor="middle">${v.fruit}</text>
       </svg>`;
       track.appendChild(el);
+      // Only some vendors actually call out as the player passes — not every one, every time.
+      const willCall = Math.random() < 0.45;
+      const phrase = v.calls[Math.floor(Math.random()*v.calls.length)];
+      vendors.push({y, called:false, willCall, phrase});
     }
+  }
+  let lastVendorCallAt = 0;
+  function updateVendors(){
+    const now = performance.now();
+    vendors.forEach(v=>{
+      if(v.called) return;
+      if(Math.abs(v.y - worldY) < 60){
+        v.called = true;
+        if(v.willCall && now - lastVendorCallAt > 2600 && !muted && 'speechSynthesis' in window && !window.speechSynthesis.speaking){
+          lastVendorCallAt = now;
+          try{
+            const u = new SpeechSynthesisUtterance(v.phrase);
+            u.rate = 1.05; u.pitch = 1.15; u.volume = 0.85;
+            window.speechSynthesis.speak(u);
+          }catch(e){}
+        }
+      }
+    });
   }
 
   buildTrack();
@@ -765,6 +789,7 @@
       updateNpcCars();
       updateBoardBus();
       updateExitPrompt();
+      updateVendors();
       // once boarded, the vehicle keeps the journey moving forward on its own
       if(boarded){
         worldY = Math.min(WORLD_LEN, worldY + 6);
