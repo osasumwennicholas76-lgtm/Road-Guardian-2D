@@ -61,6 +61,12 @@
   .building{position:absolute;width:70px;height:90px;border-radius:4px;box-shadow:inset 0 0 0 2px rgba(0,0,0,0.15);}
   .building .win{position:absolute;width:8px;height:10px;background:rgba(255,230,150,0.85);border-radius:1px;}
 
+  .river{position:absolute;background:linear-gradient(180deg, #2E6E8E, #1D4E68);border-radius:4px;box-shadow:inset 0 0 12px rgba(0,0,0,0.3);}
+  .ripple{position:absolute;width:28px;height:3px;background:rgba(255,255,255,0.35);border-radius:3px;animation:ripple 2.4s ease-in-out infinite;}
+  @keyframes ripple{0%,100%{opacity:0.15;transform:translateX(0);}50%{opacity:0.55;transform:translateX(6px);}}
+  .guardrail{position:absolute;width:6px;background:repeating-linear-gradient(180deg, #8a7148 0 10px, #6b5636 10px 12px);border-radius:2px;box-shadow:0 0 3px rgba(0,0,0,0.4);}
+  .plank{position:absolute;left:0;width:100%;height:3px;background:rgba(0,0,0,0.18);}
+
   .obj{position:absolute;transform:translate(-50%,-50%);}
   .hazard{cursor:pointer;filter:drop-shadow(0 3px 4px rgba(0,0,0,0.35));}
   .hazard.near svg{transform:scale(1.15);}
@@ -343,11 +349,15 @@
   const WORLD_LEN = 2600;
   const ROAD_W = 280;
   const LANE_MARGIN = 36;
+  const BRIDGE_START = 1250;
+  const BRIDGE_END = 1500;
   let worldY = 120;
   let laneX = 0;
   let impact = 1250;
   let trust = 80;
   let stageComplete = false;
+  let correctReports = 0;
+  const REQUIRED_REPORTS = 4;
   let playing = false;
   let isNight = false;
   let isRain = false;
@@ -429,6 +439,7 @@
     track.appendChild(sl); track.appendChild(sr);
     const palette = ['#B5654B','#7C8A6B','#C79A4B','#5E7A96','#A85C5C','#8A7148'];
     for(let y=20; y<WORLD_LEN; y+=110){
+      if(y > BRIDGE_START-30 && y < BRIDGE_END+30) continue; // river crossing — no buildings here
       [ -1, 1 ].forEach(side=>{
         const b = document.createElement('div');
         b.className='building';
@@ -445,6 +456,42 @@
         }
         track.appendChild(b);
       });
+    }
+
+    // River + bridge crossing
+    const bridgeH = BRIDGE_END - BRIDGE_START;
+    [-1, 1].forEach(side=>{
+      const water = document.createElement('div');
+      water.className = 'river';
+      water.style.bottom = BRIDGE_START + 'px';
+      water.style.height = bridgeH + 'px';
+      if(side===-1){ water.style.left = -240 + 'px'; water.style.width = '206px'; }
+      else { water.style.left = (ROAD_W+34) + 'px'; water.style.width = '206px'; }
+      track.appendChild(water);
+      for(let ry=0; ry<bridgeH; ry+=26){
+        const ripple = document.createElement('div');
+        ripple.className='ripple';
+        ripple.style.bottom = (BRIDGE_START + ry) + 'px';
+        ripple.style.left = (side===-1 ? -230 : ROAD_W+44) + (Math.random()*160) + 'px';
+        ripple.style.animationDelay = (Math.random()*2)+'s';
+        track.appendChild(ripple);
+      }
+    });
+    // guardrails along the bridge deck edges
+    [0, ROAD_W].forEach(edgeX=>{
+      const rail = document.createElement('div');
+      rail.className = 'guardrail';
+      rail.style.bottom = BRIDGE_START + 'px';
+      rail.style.height = bridgeH + 'px';
+      rail.style.left = (edgeX-4) + 'px';
+      track.appendChild(rail);
+    });
+    // deck planks across the road
+    for(let py=BRIDGE_START; py<BRIDGE_END; py+=18){
+      const plank = document.createElement('div');
+      plank.className='plank';
+      plank.style.bottom = py+'px';
+      track.appendChild(plank);
     }
   }
 
@@ -600,7 +647,36 @@
     }
   }
 
+  // ---------- STREET VENDORS (decorative) ----------
+  const VENDORS = [
+    {fruit:'🍌', trayColor:'#E8A93B'},
+    {fruit:'🍎', trayColor:'#D9483D'},
+    {fruit:'🍊', trayColor:'#E67E22'},
+    {fruit:'🥭', trayColor:'#C0392B'}
+  ];
+  function spawnVendors(){
+    for(let y=90; y<WORLD_LEN; y+=190+Math.random()*120){
+      if(y > BRIDGE_START-40 && y < BRIDGE_END+40) continue; // no vendors on the bridge
+      const side = Math.random()>0.5 ? 1 : -1;
+      const v = VENDORS[Math.floor(Math.random()*VENDORS.length)];
+      const el = document.createElement('div');
+      el.className='obj';
+      el.style.bottom = y+'px';
+      const sideOffset = side===1 ? (ROAD_W+16) : (-16-22);
+      el.style.left = sideOffset+'px';
+      el.innerHTML = `<svg width="26" height="34" viewBox="0 0 26 34">
+        <ellipse cx="13" cy="32" rx="9" ry="2" fill="rgba(0,0,0,0.25)"/>
+        <circle cx="13" cy="7" r="5" fill="#3B2A1F"/>
+        <rect x="8" y="12" width="10" height="12" rx="3" fill="#6B4A2A"/>
+        <rect x="3" y="22" width="20" height="7" rx="2" fill="${v.trayColor}"/>
+        <text x="13" y="28" font-size="9" text-anchor="middle">${v.fruit}</text>
+      </svg>`;
+      track.appendChild(el);
+    }
+  }
+
   buildTrack();
+  spawnVendors();
   spawnHazards();
   spawnNpcCars();
   spawnBoardBus();
@@ -614,6 +690,12 @@
     const px = laneX * (ROAD_W/2 - LANE_MARGIN);
     playerEl.style.left = `calc(50% + ${px}px)`;
     playerEl.style.top = (viewportH*0.68) + 'px';
+
+    const BENCHMARK_Y = WORLD_LEN - 200;
+    const benchmarkMet = correctReports >= REQUIRED_REPORTS;
+    if(worldY > BENCHMARK_Y && !benchmarkMet){
+      worldY = BENCHMARK_Y; // soft stop until the report benchmark is met
+    }
 
     let nearest = null, nearestDist = 9999;
     hazards.forEach(h=>{
@@ -632,11 +714,15 @@
     } else {
       reportBtn.disabled = true;
       reportBtn.classList.remove('ready');
-      hint.textContent = boarded ? 'Riding the danfo home' : 'Move toward a hazard';
+      if(worldY >= BENCHMARK_Y - 4 && !benchmarkMet){
+        hint.textContent = `Report ${REQUIRED_REPORTS - correctReports} more hazard${REQUIRED_REPORTS-correctReports===1?'':'s'} to reach the end of stage`;
+      } else {
+        hint.textContent = boarded ? 'Riding the danfo home' : 'Move toward a hazard';
+      }
       reportBtn._target = null;
     }
 
-    if(!stageComplete && worldY > WORLD_LEN - 200){
+    if(!stageComplete && benchmarkMet && worldY > WORLD_LEN - 200){
       stageComplete = true;
       playing = false;
       setTimeout(playImpactSequence, 400);
@@ -656,7 +742,7 @@
         setTimeout(()=>{
           seq.classList.add('hidden');
           document.getElementById('endSummary').textContent =
-            `${impact.toLocaleString()} Impact · ${trust}% Trust · ${health}% Health remaining. Your reports helped bring attention to dangerous conditions on Lagos Streets.`;
+            `${correctReports} hazards reported · ${impact.toLocaleString()} Impact · ${trust}% Trust · ${health}% Health remaining. Your reports helped bring attention to dangerous conditions on ${currentStage.label}.`;
           document.getElementById('endOverlay').classList.remove('hidden');
           speak('Journey complete. Well done, road guardian.');
         }, 700);
@@ -741,9 +827,10 @@
       if(correct){
         impact += 50;
         trust = Math.min(100, trust + 2);
+        correctReports++;
         sfxGood();
         hapticLight();
-        showToast('GOOD REPORT! +50 Impact, Trust +2%');
+        showToast(`GOOD REPORT! +50 Impact, Trust +2% (${correctReports}/${REQUIRED_REPORTS} for stage clear)`);
       } else {
         trust = Math.max(0, trust - 3);
         sfxBad();
@@ -794,9 +881,11 @@
     currentStage = STAGES[stageKey] || STAGES['lagos-streets'];
     document.getElementById('stageLabel').textContent = currentStage.label;
     document.getElementById('stageSelectOverlay').classList.add('hidden');
+    correctReports = 0;
+    stageComplete = false;
     spawnNpcCars();
     playing = true;
-    showToast('Ẹ máa lọ, ẹ máa dé 🎵', 2400);
+    showToast(`Ẹ máa lọ, ẹ máa dé 🎵 — report ${REQUIRED_REPORTS} hazards to finish`, 2800);
     speak('Ẹ máa lọ, ẹ máa dé. Go safely, and return safely.');
     cycleEnvironment();
     render();
