@@ -35,6 +35,9 @@
   .hud-stat{display:flex;align-items:center;gap:5px;background:rgba(0,0,0,0.35);padding:5px 9px;border-radius:8px;}
   .hud-stat .dot{width:8px;height:8px;border-radius:50%;}
   #healthWrap{display:flex;align-items:center;gap:5px;background:rgba(0,0,0,0.35);padding:5px 9px;border-radius:8px;}
+  #timerWrap{transition:color 0.3s ease, background 0.3s ease;}
+  #timerWrap.low{background:rgba(217,72,61,0.55);color:#fff;animation:pulseTimer 1s ease infinite;}
+  @keyframes pulseTimer{0%,100%{opacity:1;}50%{opacity:0.6;}}
   #healthBar{width:44px;height:6px;background:rgba(255,255,255,0.2);border-radius:4px;overflow:hidden;}
   #healthFill{height:100%;width:100%;background:var(--danger);transition:width 0.25s ease, background 0.25s ease;}
   #flash{position:absolute;inset:0;background:rgba(217,72,61,0.5);opacity:0;pointer-events:none;z-index:45;transition:opacity 0.15s ease;}
@@ -88,6 +91,7 @@
   .hazard.near svg{transform:scale(1.15);}
   .hazard svg{transition:transform 0.15s ease;}
   .npc-car{position:absolute;transform:translate(-50%,-50%);filter:drop-shadow(0 3px 4px rgba(0,0,0,0.35));}
+  .jamCar{filter:drop-shadow(0 0 5px rgba(255,60,60,0.5)) drop-shadow(0 3px 4px rgba(0,0,0,0.35));}
   .npc-car .speedlines{opacity:0;}
   .npc-car.fast .speedlines{opacity:0.6;}
 
@@ -182,6 +186,7 @@
       <div class="hud-stat"><span class="dot" style="background:var(--gold);"></span><span id="impactVal">0</span></div>
       <div class="hud-stat"><span class="dot" style="background:var(--ok);"></span><span id="trustVal">80%</span></div>
       <div id="healthWrap"><span style="font-size:11px;">❤️</span><div id="healthBar"><div id="healthFill"></div></div></div>
+      <div class="hud-stat" id="timerWrap"><span style="font-size:11px;">⏱</span><span id="timerVal">5:00</span></div>
     </div>
     <div id="stageLabel">LAGOS STREETS</div>
     <div id="topRight">
@@ -392,6 +397,9 @@
   let boardBusRef = null;
   const BOARD_Y = 3550;
   let health = 100;
+  const STAGE_TIME_LIMIT = 300; // 5 minutes
+  let stageTimeLeft = STAGE_TIME_LIMIT;
+  let timerInterval = null;
   let checkpointY = 120;
   let invulnUntil = 0;
 
@@ -555,8 +563,10 @@
     roadblock:{icon:'⛔', color:'#1F7A3D', label:'Roadblock'}
   };
   let hazards = [];
+  let trafficZones = [];
   function spawnHazards(){
     hazards = [];
+    trafficZones = [];
     const types = Object.keys(HAZARD_TYPES);
     const count = 12;
     for(let i=0;i<count;i++){
@@ -571,6 +581,25 @@
       track.appendChild(el);
       positionAt(el, x, y);
       hazards.push({el,type,y,x,done:false});
+      if(type === 'traffic'){
+        buildJam(y, x);
+        trafficZones.push({y, radius:100});
+      }
+    }
+  }
+
+  function buildJam(centerY, laneXPos){
+    // a nose-to-tail queue of stopped vehicles blocking that lane — the visual reason
+    // to detour onto the sidewalk instead of weaving through on foot
+    const jamLen = 3 + Math.floor(Math.random()*2);
+    for(let j=0;j<jamLen;j++){
+      const jy = centerY + 24 + j*30;
+      const el = document.createElement('div');
+      el.className = 'npc-car jamCar';
+      el.innerHTML = `<svg width="26" height="40" viewBox="0 0 26 40"><rect x="2" y="4" width="22" height="32" rx="6" fill="#4a4a4a"/><rect x="4" y="8" width="18" height="10" rx="3" fill="#8ecae6"/></svg>`;
+      track.appendChild(el);
+      el.style.bottom = jy+'px';
+      positionAt(el, laneXPos, jy);
     }
   }
 
@@ -925,6 +954,8 @@
       } else if(distToLight > -30 && distToLight < 260){
         const lightWord = lightPhase==='red' ? '🔴 RED — safe to cross' : (lightPhase==='yellow' ? '🟡 YELLOW — get ready' : '🟢 GREEN — wait, traffic moving');
         hint.textContent = 'Junction ahead: ' + lightWord;
+      } else if(inJamZone){
+        hint.textContent = '🚗 Traffic jam — try the sidewalk to move faster';
       } else {
         hint.textContent = boarded ? 'Riding the danfo home' : 'Move toward a hazard';
       }
@@ -994,10 +1025,18 @@
   const speed = 14;
   const laneSpeed = 0.12;
   let moveInterval = null;
+  let inJamZone = false;
+  function currentSpeed(){
+    // Weaving through a traffic jam on the road itself is slow going; stepping out
+    // onto the sidewalk (out of the vehicle lanes) lets you walk past at full pace.
+    const onRoad = Math.abs(laneX) < SAFE_LANE_ABS;
+    inJamZone = onRoad && trafficZones.some(z => Math.abs(z.y - worldY) < z.radius);
+    return inJamZone ? speed * 0.35 : speed;
+  }
   function step(dir){
     if(!playing) return;
-    if(dir==='up' && !boarded) worldY = Math.min(WORLD_LEN, worldY + speed);
-    if(dir==='down' && !boarded) worldY = Math.max(0, worldY - speed);
+    if(dir==='up' && !boarded) worldY = Math.min(WORLD_LEN, worldY + currentSpeed());
+    if(dir==='down' && !boarded) worldY = Math.max(0, worldY - currentSpeed());
     if(dir==='left') laneX = Math.max(-1, laneX - laneSpeed);
     if(dir==='right') laneX = Math.min(1, laneX + laneSpeed);
     const now = performance.now();
@@ -1090,6 +1129,38 @@
     document.getElementById('stageSelectOverlay').classList.remove('hidden');
   });
 
+  function updateTimerDisplay(){
+    const m = Math.floor(stageTimeLeft/60);
+    const s = stageTimeLeft%60;
+    document.getElementById('timerVal').textContent = `${m}:${s<10?'0':''}${s}`;
+    document.getElementById('timerWrap').classList.toggle('low', stageTimeLeft <= 30);
+  }
+  function startStageTimer(){
+    stageTimeLeft = STAGE_TIME_LIMIT;
+    updateTimerDisplay();
+    clearInterval(timerInterval);
+    timerInterval = setInterval(()=>{
+      if(!playing || stageComplete) return;
+      stageTimeLeft--;
+      updateTimerDisplay();
+      if(stageTimeLeft <= 0){
+        clearInterval(timerInterval);
+        onTimeUp();
+      }
+    }, 1000);
+  }
+  function onTimeUp(){
+    if(stageComplete) return;
+    stageComplete = true;
+    playing = false;
+    hapticStrong();
+    document.getElementById('endOverlay').querySelector('h1').textContent = "Time's Up";
+    document.getElementById('endSummary').textContent =
+      `${correctReports}/${REQUIRED_REPORTS} hazards reported · ${impact.toLocaleString()} Impact · ${trust}% Trust. The 5-minute window ran out before you finished the journey — try moving through jams via the sidewalk to save time.`;
+    document.getElementById('endOverlay').classList.remove('hidden');
+    speak("Time's up. Try the sidewalks to move faster next time.");
+  }
+
   function beginStage(stageKey){
     currentStage = STAGES[stageKey] || STAGES['lagos-streets'];
     document.getElementById('stageLabel').textContent = currentStage.label;
@@ -1098,7 +1169,8 @@
     stageComplete = false;
     spawnNpcCars();
     playing = true;
-    showToast(`Ẹ máa lọ, ẹ máa dé 🎵 — report ${REQUIRED_REPORTS} hazards to finish`, 2800);
+    startStageTimer();
+    showToast(`Ẹ máa lọ, ẹ máa dé 🎵 — report ${REQUIRED_REPORTS} hazards in 5 minutes`, 2800);
     speak('Ẹ máa lọ, ẹ máa dé. Go safely, and return safely.');
     cycleEnvironment();
     render();
