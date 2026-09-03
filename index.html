@@ -62,6 +62,22 @@
   .building .win{position:absolute;width:8px;height:10px;background:rgba(255,230,150,0.85);border-radius:1px;}
 
   .river{position:absolute;background:linear-gradient(180deg, #2E6E8E, #1D4E68);border-radius:4px;box-shadow:inset 0 0 12px rgba(0,0,0,0.3);}
+  .zebra{position:absolute;width:16px;height:22px;background:rgba(255,255,255,0.9);border-radius:2px;box-shadow:0 0 4px rgba(255,255,255,0.4);}
+  .trafficLight{position:absolute;left:0;width:100%;height:60px;}
+  .trafficLight .poleL,.trafficLight .poleR{position:absolute;bottom:0;width:6px;height:60px;background:#3a3d45;}
+  .trafficLight .poleL{left:-8px;}
+  .trafficLight .poleR{right:-8px;}
+  .trafficLight .crossbar{position:absolute;top:0;left:-8px;right:-8px;height:6px;background:#3a3d45;}
+  .trafficLight .lampBox{position:absolute;top:6px;left:50%;transform:translateX(-50%);padding:4px;background:#1b1d22;border-radius:5px;display:flex;gap:4px;box-shadow:0 3px 8px rgba(0,0,0,0.4);}
+  .trafficLight .lamp{width:14px;height:14px;border-radius:50%;background:#3a1010;opacity:0.45;}
+  .trafficLight .lamp.yellow{background:#4a3a10;}
+  .trafficLight .lamp.green{background:#103a18;}
+  .trafficLight .lamp.red.on{background:#ff4d4d;opacity:1;box-shadow:0 0 10px #ff4d4d;}
+  .trafficLight .lamp.yellow.on{background:#ffd23f;opacity:1;box-shadow:0 0 10px #ffd23f;}
+  .trafficLight .lamp.green.on{background:#3ddc6a;opacity:1;box-shadow:0 0 10px #3ddc6a;}
+  .junctionBanner{position:absolute;left:50%;transform:translateX(-50%);white-space:nowrap;background:var(--gold);color:#1b1d22;font-weight:800;font-size:12px;padding:5px 12px;border-radius:10px;box-shadow:0 3px 8px rgba(0,0,0,0.35);}
+  .pedestrian svg{animation:pedbob 0.5s ease-in-out infinite alternate;}
+  @keyframes pedbob{from{transform:translateY(0);}to{transform:translateY(-2px);}}
   .ripple{position:absolute;width:28px;height:3px;background:rgba(255,255,255,0.35);border-radius:3px;animation:ripple 2.4s ease-in-out infinite;}
   @keyframes ripple{0%,100%{opacity:0.15;transform:translateX(0);}50%{opacity:0.55;transform:translateX(6px);}}
   .guardrail{position:absolute;width:6px;background:repeating-linear-gradient(180deg, #8a7148 0 10px, #6b5636 10px 12px);border-radius:2px;box-shadow:0 0 3px rgba(0,0,0,0.4);}
@@ -92,6 +108,15 @@
   }
   #boardPrompt.show{opacity:1;transform:translate(-50%,0);pointer-events:auto;}
   #boardPrompt.exit{background:var(--info);color:#fff;}
+
+  #buyPrompt{
+    position:absolute;left:50%;bottom:200px;transform:translate(-50%,10px);z-index:36;
+    background:var(--paper);color:var(--ink);padding:10px 14px;border-radius:14px;font-weight:700;font-size:12px;
+    display:flex;align-items:center;gap:10px;opacity:0;pointer-events:none;transition:all 0.25s ease;
+    box-shadow:0 4px 12px rgba(0,0,0,0.35);
+  }
+  #buyPrompt.show{opacity:1;transform:translate(-50%,0);pointer-events:auto;}
+  #buyPrompt button{background:var(--green);color:#fff;border:none;padding:6px 12px;border-radius:10px;font-weight:800;font-size:11px;}
 
   #impactSeq{position:absolute;inset:0;background:rgba(10,12,16,0.96);z-index:65;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;padding:24px;}
   #impactSeq.hidden{display:none;}
@@ -167,6 +192,7 @@
 
   <div id="toast"></div>
   <div id="boardPrompt">TAP TO BOARD DANFO</div>
+  <div id="buyPrompt"></div>
 
   <div id="controls">
     <div id="dpad">
@@ -346,24 +372,25 @@
   worldEl.appendChild(playerEl);
 
   // ---------- WORLD CONSTANTS ----------
-  const WORLD_LEN = 2600;
+  const WORLD_LEN = 5200;
   const ROAD_W = 280;
   const LANE_MARGIN = 36;
-  const BRIDGE_START = 1250;
-  const BRIDGE_END = 1500;
+  const BRIDGE_START = 2500;
+  const LIGHT_Y = 700;
+  const BRIDGE_END = 2900;
   let worldY = 120;
   let laneX = 0;
   let impact = 1250;
   let trust = 80;
   let stageComplete = false;
   let correctReports = 0;
-  const REQUIRED_REPORTS = 4;
+  const REQUIRED_REPORTS = 8;
   let playing = false;
   let isNight = false;
   let isRain = false;
   let boarded = false;
   let boardBusRef = null;
-  const BOARD_Y = 1350;
+  const BOARD_Y = 3550;
   let health = 100;
   let checkpointY = 120;
   let invulnUntil = 0;
@@ -405,6 +432,9 @@
     setTimeout(()=>flashEl.classList.remove('on'), 180);
     showToast(boarded ? 'The danfo clipped something!' : 'You were nearly hit — take care!', 1800);
     updateHud();
+    returnToCheckpointIfDown();
+  }
+  function returnToCheckpointIfDown(){
     if(health <= 0){
       showToast('Returning to last safe point…', 1800);
       setTimeout(()=>{
@@ -416,6 +446,28 @@
         invulnUntil = performance.now() + 1500;
         updateHud();
       }, 700);
+    }
+  }
+  // Walking out in the vehicle lanes instead of the sidewalk drains health slowly —
+  // a much gentler penalty than an actual collision, to discourage lingering in traffic.
+  const SAFE_LANE_ABS = 0.62;
+  let dangerFrames = 0;
+  let lastDangerWarnAt = 0;
+  function updateRoadDanger(){
+    if(boarded){ dangerFrames = 0; return; }
+    const inTraffic = Math.abs(laneX) < SAFE_LANE_ABS;
+    if(!inTraffic){ dangerFrames = 0; return; }
+    dangerFrames++;
+    const now = performance.now();
+    if(dangerFrames === 1 && now - lastDangerWarnAt > 4500){
+      lastDangerWarnAt = now;
+      showToast('⚠️ It is dangerous! Get to the sidewalk when you\u2019re not reporting.', 2000);
+    }
+    if(dangerFrames >= 150){ // roughly 2.5s of continuous exposure
+      dangerFrames = 0;
+      health = Math.max(0, health - 1);
+      updateHud();
+      returnToCheckpointIfDown();
     }
   }
   function showToast(msg, ms){
@@ -506,8 +558,10 @@
   function spawnHazards(){
     hazards = [];
     const types = Object.keys(HAZARD_TYPES);
-    for(let i=0;i<6;i++){
-      const y = 300 + i*380 + Math.random()*80;
+    const count = 12;
+    for(let i=0;i<count;i++){
+      const y = 300 + i*((WORLD_LEN-500)/count) + Math.random()*80;
+      if(y > BRIDGE_START-30 && y < BRIDGE_END+30) continue; // no hazards mid-bridge
       const x = (Math.random()*2-1) * 0.75;
       const type = types[Math.floor(Math.random()*types.length)];
       const el = document.createElement('div');
@@ -549,7 +603,13 @@
   }
   function updateNpcCars(){
     npcCars.forEach(c=>{
-      c.y -= c.speed; // slowly comes toward the player
+      // stop for the traffic light: cars approaching the stop line (still ahead of it) halt
+      // unless the light is green; cars already past the line keep going.
+      const approachingLight = c.y > LIGHT_Y && c.y - LIGHT_Y < 90;
+      const mustStop = approachingLight && lightPhase !== 'green';
+      if(!mustStop){
+        c.y -= c.speed; // slowly comes toward the player
+      }
       if(c.y < worldY - 260){
         // passed behind the player — respawn ahead
         c.y = worldY + 500 + Math.random()*400;
@@ -649,12 +709,53 @@
 
   // ---------- STREET VENDORS (decorative, some call out as you pass) ----------
   const VENDORS = [
-    {fruit:'🍌', trayColor:'#E8A93B', calls:['Banana! Come buy banana!', 'Sweet banana, come and buy!']},
-    {fruit:'🍎', trayColor:'#D9483D', calls:['Apple! Fresh apple here!', 'Come buy apple, sweet one!']},
-    {fruit:'🍊', trayColor:'#E67E22', calls:['Orange! Sweet orange, come buy!', 'Fresh orange here, come and buy!']},
-    {fruit:'🥭', trayColor:'#C0392B', calls:['Mango! Sweet mango, come buy!', 'Come and buy mango!']}
+    {fruit:'🍌', name:'Banana', trayColor:'#E8A93B', calls:['Banana! Come buy banana!', 'Sweet banana, come and buy!']},
+    {fruit:'🍎', name:'Apple', trayColor:'#D9483D', calls:['Apple! Fresh apple here!', 'Come buy apple, sweet one!']},
+    {fruit:'🍊', name:'Orange', trayColor:'#E67E22', calls:['Orange! Sweet orange, come buy!', 'Fresh orange here, come and buy!']},
+    {fruit:'🥭', name:'Mango', trayColor:'#C0392B', calls:['Mango! Sweet mango, come buy!', 'Come and buy mango!']},
+    {fruit:'🍟', name:'Plantain chips', trayColor:'#B8860B', calls:['Plantain chips! Come and buy!', 'Sweet plantain chips here!']},
+    {fruit:'💧', name:'Pure water', trayColor:'#3B7FE8', calls:['Water! Cold water here!', 'Pure water, come and buy!']},
+    {fruit:'🍦', name:'Ice cream', trayColor:'#E8CBA9', calls:['Ice cream! Sweet and cold!', 'Come buy ice cream!']}
   ];
-  let vendors = [];
+  // ---------- AMBIENT PEDESTRIANS (sidewalk, decorative but moving) ----------
+  let pedestrians = [];
+  function makePedestrian(y, side, speed){
+    const el = document.createElement('div');
+    el.className = 'obj pedestrian';
+    const skin = ['#3B2A1F','#4A3222','#5C3D28'][Math.floor(Math.random()*3)];
+    const shirt = ['#2E6E8E','#B5654B','#6B8E5A','#8A5A9E'][Math.floor(Math.random()*4)];
+    el.innerHTML = `<svg width="18" height="26" viewBox="0 0 18 26">
+      <ellipse cx="9" cy="25" rx="6" ry="2" fill="rgba(0,0,0,0.22)"/>
+      <circle cx="9" cy="5" r="4" fill="${skin}"/>
+      <rect x="5" y="9" width="8" height="10" rx="3" fill="${shirt}"/>
+      <rect x="4" y="19" width="4" height="6" rx="2" fill="#2B2B2B"/>
+      <rect x="10" y="19" width="4" height="6" rx="2" fill="#2B2B2B"/>
+    </svg>`;
+    track.appendChild(el);
+    const sideOffset = side===1 ? (ROAD_W+16) : (-16-18);
+    return {el, y, side, speed, x:sideOffset};
+  }
+  function spawnPedestrians(){
+    pedestrians.forEach(p=>p.el.remove());
+    pedestrians = [];
+    for(let y=150; y<WORLD_LEN; y+=250+Math.random()*180){
+      const side = Math.random()>0.5 ? 1 : -1;
+      const speed = 0.4 + Math.random()*0.5;
+      pedestrians.push(makePedestrian(y, side, speed));
+    }
+  }
+  function updatePedestrians(){
+    pedestrians.forEach(p=>{
+      p.y -= p.speed; // ambling toward the player, same as traffic
+      if(p.y < worldY - 260){
+        p.y = worldY + 400 + Math.random()*400;
+        p.side = Math.random()>0.5 ? 1 : -1;
+        p.x = p.side===1 ? (ROAD_W+16) : (-16-18);
+      }
+      p.el.style.bottom = p.y + 'px';
+      p.el.style.left = p.x + 'px';
+    });
+  }
   function spawnVendors(){
     vendors = [];
     for(let y=90; y<WORLD_LEN; y+=190+Math.random()*120){
@@ -677,7 +778,7 @@
       // Only some vendors actually call out as the player passes — not every one, every time.
       const willCall = Math.random() < 0.45;
       const phrase = v.calls[Math.floor(Math.random()*v.calls.length)];
-      vendors.push({y, called:false, willCall, phrase});
+      vendors.push({y, called:false, willCall, phrase, name:v.name, fruit:v.fruit});
     }
   }
   let lastVendorCallAt = 0;
@@ -694,12 +795,92 @@
             u.rate = 1.05; u.pitch = 1.15; u.volume = 0.85;
             window.speechSynthesis.speak(u);
           }catch(e){}
+          offerBuy(v);
         }
       }
     });
   }
+  function offerBuy(v){
+    const buyPrompt = document.getElementById('buyPrompt');
+    buyPrompt.innerHTML = `<span>${v.fruit} ${v.name}? </span><button id="buyYes">BUY</button>`;
+    buyPrompt.classList.add('show');
+    const hideTimer = setTimeout(()=>{ buyPrompt.classList.remove('show'); }, 3200);
+    document.getElementById('buyYes').onclick = ()=>{
+      clearTimeout(hideTimer);
+      buyPrompt.classList.remove('show');
+      trust = Math.min(100, trust + 1);
+      sfxGood();
+      hapticLight();
+      showToast(`Bought ${v.name.toLowerCase()} from the roadside seller! Trust +1%`, 1800);
+      updateHud();
+    };
+  }
+
+  // ---------- TRAFFIC LIGHT + ZEBRA CROSSING ----------
+  let lightPhase = 'green'; // 'green' | 'yellow' | 'red'
+  let lightEl = null, lampRed = null, lampYellow = null, lampGreen = null;
+  let crossingRewarded = false;
+  function buildCrossing(){
+    // wide, high-contrast zebra stripes spanning the full road width
+    for(let sx=-ROAD_W/2+10; sx<ROAD_W/2; sx+=20){
+      const stripe = document.createElement('div');
+      stripe.className = 'zebra';
+      stripe.style.bottom = (LIGHT_Y-11) + 'px';
+      stripe.style.left = (ROAD_W/2 + sx - 7) + 'px';
+      track.appendChild(stripe);
+    }
+    // an overhead signal arm spanning the road, like a real junction light —
+    // poles on both sides with a crossbar and a large lamp box hanging over the lanes
+    lightEl = document.createElement('div');
+    lightEl.className = 'trafficLight';
+    lightEl.style.bottom = (LIGHT_Y+40) + 'px';
+    lightEl.innerHTML = `
+      <div class="poleL"></div>
+      <div class="poleR"></div>
+      <div class="crossbar"></div>
+      <div class="lampBox">
+        <div class="lamp red" id="lampRed"></div>
+        <div class="lamp yellow" id="lampYellow"></div>
+        <div class="lamp green" id="lampGreen"></div>
+      </div>`;
+    track.appendChild(lightEl);
+    lampRed = lightEl.querySelector('#lampRed');
+    lampYellow = lightEl.querySelector('#lampYellow');
+    lampGreen = lightEl.querySelector('#lampGreen');
+    setLightPhase('green');
+
+    // a banner marking the junction, visible well before arrival
+    const banner = document.createElement('div');
+    banner.className = 'junctionBanner';
+    banner.style.bottom = (LIGHT_Y+140) + 'px';
+    banner.textContent = '🚦 JUNCTION AHEAD';
+    track.appendChild(banner);
+  }
+  function setLightPhase(phase){
+    lightPhase = phase;
+    [lampRed,lampYellow,lampGreen].forEach(l=>l && l.classList.remove('on'));
+    if(phase==='red' && lampRed) lampRed.classList.add('on');
+    if(phase==='yellow' && lampYellow) lampYellow.classList.add('on');
+    if(phase==='green' && lampGreen) lampGreen.classList.add('on');
+    const next = phase==='green' ? 6000 : (phase==='yellow' ? 1500 : 5000);
+    const after = phase==='green' ? 'yellow' : (phase==='yellow' ? 'red' : 'green');
+    clearTimeout(setLightPhase._t);
+    setLightPhase._t = setTimeout(()=>setLightPhase(after), next);
+  }
+  function updateCrossingReward(){
+    const nearCrossing = Math.abs(worldY - LIGHT_Y) < 24;
+    if(nearCrossing && lightPhase==='red' && !crossingRewarded){
+      crossingRewarded = true;
+      trust = Math.min(100, trust + 1);
+      showToast('Safe crossing at the zebra stripes! Trust +1%', 1600);
+      updateHud();
+    }
+    if(!nearCrossing) crossingRewarded = false;
+  }
 
   buildTrack();
+  buildCrossing();
+  spawnPedestrians();
   spawnVendors();
   spawnHazards();
   spawnNpcCars();
@@ -738,8 +919,12 @@
     } else {
       reportBtn.disabled = true;
       reportBtn.classList.remove('ready');
+      const distToLight = LIGHT_Y - worldY;
       if(worldY >= BENCHMARK_Y - 4 && !benchmarkMet){
         hint.textContent = `Report ${REQUIRED_REPORTS - correctReports} more hazard${REQUIRED_REPORTS-correctReports===1?'':'s'} to reach the end of stage`;
+      } else if(distToLight > -30 && distToLight < 260){
+        const lightWord = lightPhase==='red' ? '🔴 RED — safe to cross' : (lightPhase==='yellow' ? '🟡 YELLOW — get ready' : '🟢 GREEN — wait, traffic moving');
+        hint.textContent = 'Junction ahead: ' + lightWord;
       } else {
         hint.textContent = boarded ? 'Riding the danfo home' : 'Move toward a hazard';
       }
@@ -790,6 +975,9 @@
       updateBoardBus();
       updateExitPrompt();
       updateVendors();
+      updatePedestrians();
+      updateCrossingReward();
+      updateRoadDanger();
       // once boarded, the vehicle keeps the journey moving forward on its own
       if(boarded){
         worldY = Math.min(WORLD_LEN, worldY + 6);
